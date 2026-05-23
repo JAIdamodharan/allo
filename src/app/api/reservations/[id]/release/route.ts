@@ -44,6 +44,14 @@ export async function POST(
       prisma.reservation.update({
         where: { id },
         data: { status: 'RELEASED' },
+        include: {
+          stockLevel: {
+            include: {
+              product: true,
+              warehouse: true,
+            },
+          },
+        },
       }),
     ]);
 

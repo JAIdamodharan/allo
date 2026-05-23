@@ -9,6 +9,14 @@ export async function GET(
     const { id } = await params;
     const reservation = await prisma.reservation.findUnique({
       where: { id },
+      include: {
+        stockLevel: {
+          include: {
+            product: true,
+            warehouse: true,
+          },
+        },
+      },
     });
 
     if (!reservation) {

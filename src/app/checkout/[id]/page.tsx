@@ -11,12 +11,34 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function formatINR(usdAmount: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(usdAmount * 83);
+}
+
 interface Reservation {
   id: string;
   stockLevelId: string;
   quantity: number;
   status: 'PENDING' | 'CONFIRMED' | 'RELEASED';
   expiresAt: string;
+  stockLevel?: {
+    id: string;
+    product: {
+      id: string;
+      name: string;
+      description: string | null;
+      price: number;
+      imageUrl: string | null;
+    };
+    warehouse: {
+      id: string;
+      name: string;
+    };
+  };
 }
 
 export default function CheckoutPage({ params }: { params: Promise<{ id: string }> }) {
@@ -103,13 +125,44 @@ export default function CheckoutPage({ params }: { params: Promise<{ id: string 
         </header>
 
         {reservation?.status === 'CONFIRMED' && (
-          <div className="border border-zinc-200 bg-white p-10 text-center space-y-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
-              <Package className="w-6 h-6 text-emerald-600" />
+          <div className="border border-zinc-200 bg-white p-10 text-center space-y-6">
+            <div className="space-y-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+                <Package className="w-6 h-6 text-emerald-600" />
+              </div>
+              <h2 className="text-xl font-semibold">Order Confirmed</h2>
+              <p className="text-zinc-500 text-sm max-w-xs mx-auto">Your item has been secured. Stock permanently decremented.</p>
+              <p className="font-mono text-xs text-zinc-400">ref: {reservation.id}</p>
             </div>
-            <h2 className="text-xl font-semibold">Order Confirmed</h2>
-            <p className="text-zinc-500 text-sm max-w-xs mx-auto">Your item has been secured. Stock permanently decremented.</p>
-            <p className="font-mono text-xs text-zinc-400 pt-2">ref: {reservation.id}</p>
+
+            {/* Confirmed Order Summary */}
+            {reservation.stockLevel?.product && (
+              <div className="border-t border-zinc-200 pt-6 text-left max-w-md mx-auto space-y-4">
+                <div className="flex gap-4 p-4 bg-zinc-50 border border-zinc-150 rounded-sm">
+                  {reservation.stockLevel.product.imageUrl && (
+                    <div className="w-16 h-16 bg-white border border-zinc-200 flex-shrink-0 overflow-hidden">
+                      <img 
+                        src={reservation.stockLevel.product.imageUrl} 
+                        alt={reservation.stockLevel.product.name} 
+                        className="w-full h-full object-cover mix-blend-multiply" 
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-medium text-zinc-900 truncate">
+                      {reservation.stockLevel.product.name}
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Quantity: <span className="font-medium text-zinc-800">{reservation.quantity}</span>
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Total: <span className="font-semibold text-zinc-800">{formatINR(reservation.stockLevel.product.price * reservation.quantity)}</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-center gap-4 pt-2">
               <button onClick={() => router.push('/')} className="text-sm underline text-zinc-900">Back to store</button>
               <button onClick={() => router.push('/admin')} className="text-sm underline text-zinc-400">Admin view</button>
@@ -151,19 +204,63 @@ export default function CheckoutPage({ params }: { params: Promise<{ id: string 
             </div>
 
             {/* Order summary */}
-            <div className="px-8 py-6 space-y-4 border-b border-zinc-100">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Order Summary</h2>
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Quantity Reserved</span>
-                <span className="font-medium">{reservation.quantity}</span>
+            <div className="px-8 py-6 space-y-6 border-b border-zinc-100">
+              <div className="flex justify-between items-center">
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">Order Summary</h2>
+                {reservation.stockLevel?.warehouse.name && (
+                  <span className="inline-flex items-center gap-1 text-xs text-zinc-500 bg-zinc-150 px-2 py-0.5 rounded-sm">
+                    Reserved from: <span className="font-medium text-zinc-800">{reservation.stockLevel.warehouse.name}</span>
+                  </span>
+                )}
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Status</span>
-                <span className="text-amber-600 font-medium">Pending payment</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Reservation ID</span>
-                <span className="font-mono text-xs text-zinc-400">{reservation.id.slice(0, 16)}…</span>
+
+              {reservation.stockLevel?.product && (
+                <div className="flex gap-4 p-4 bg-zinc-50 border border-zinc-150 rounded-sm">
+                  {reservation.stockLevel.product.imageUrl && (
+                    <div className="w-20 h-20 bg-white border border-zinc-250 flex-shrink-0 overflow-hidden">
+                      <img 
+                        src={reservation.stockLevel.product.imageUrl} 
+                        alt={reservation.stockLevel.product.name} 
+                        className="w-full h-full object-cover mix-blend-multiply" 
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-medium text-zinc-900 truncate">
+                      {reservation.stockLevel.product.name}
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1 line-clamp-2">
+                      {reservation.stockLevel.product.description}
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-2">
+                      Unit Price: {formatINR(reservation.stockLevel.product.price)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Quantity Reserved</span>
+                  <span className="font-medium">{reservation.quantity}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Status</span>
+                  <span className="text-amber-600 font-medium">Pending payment</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Reservation ID</span>
+                  <span className="font-mono text-xs text-zinc-400">{reservation.id.slice(0, 16)}…</span>
+                </div>
+
+                {reservation.stockLevel?.product && (
+                  <div className="flex justify-between text-sm pt-4 border-t border-dashed border-zinc-200">
+                    <span className="text-zinc-900 font-medium">Total Price</span>
+                    <span className="text-lg font-bold text-zinc-900">
+                      {formatINR(reservation.stockLevel.product.price * reservation.quantity)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

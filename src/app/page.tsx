@@ -11,6 +11,14 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function formatINR(usdAmount: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(usdAmount * 83);
+}
+
 interface WarehouseStock {
   id: string;
   warehouseId: string;
@@ -115,7 +123,7 @@ export default function ProductsPage() {
               <div className="flex-1">
                 <div className="flex justify-between items-start">
                   <h2 className="text-lg font-medium">{product.name}</h2>
-                  <span className="text-sm font-medium">${product.price}</span>
+                  <span className="text-sm font-medium">{formatINR(product.price)}</span>
                 </div>
                 <p className="text-sm text-zinc-500 mt-2">{product.description}</p>
                 
