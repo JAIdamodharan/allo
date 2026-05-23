@@ -49,6 +49,10 @@ export default function CheckoutPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(true);
   const [timeLeft, setTimeLeft] = useState('');
   const [expired, setExpired] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [confirmIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [cancelIdempotencyKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     fetch(`/api/reservations/${id}`)
@@ -76,32 +80,49 @@ export default function CheckoutPage({ params }: { params: Promise<{ id: string 
   }, [reservation]);
 
   const confirm = async () => {
+    if (isConfirming || isCancelling) return;
+    setIsConfirming(true);
     const toastId = toast.loading('Processing payment...');
-    const res = await fetch(`/api/reservations/${id}/confirm`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID() }
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error, { id: toastId });
-      if (res.status === 410 && reservation) setReservation({ ...reservation, status: 'RELEASED' });
-      return;
+    try {
+      const res = await fetch(`/api/reservations/${id}/confirm`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': confirmIdempotencyKey }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to confirm purchase', { id: toastId });
+        if (res.status === 410 && reservation) setReservation({ ...reservation, status: 'RELEASED' });
+        return;
+      }
+      toast.success('Payment confirmed!', { id: toastId });
+      setReservation(data);
+    } catch (e) {
+      toast.error('An unexpected error occurred', { id: toastId });
+    } finally {
+      setIsConfirming(false);
     }
-    toast.success('Payment confirmed!', { id: toastId });
-    setReservation(data);
   };
 
   const cancel = async () => {
+    if (isConfirming || isCancelling) return;
+    setIsCancelling(true);
     const toastId = toast.loading('Cancelling...');
-    const res = await fetch(`/api/reservations/${id}/release`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': crypto.randomUUID() }
-    });
-    if (res.ok) {
-      toast.success('Reservation cancelled', { id: toastId });
-      setReservation(await res.json());
-    } else {
-      toast.error('Failed to cancel', { id: toastId });
+    try {
+      const res = await fetch(`/api/reservations/${id}/release`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': cancelIdempotencyKey }
+      });
+      if (res.ok) {
+        toast.success('Reservation cancelled', { id: toastId });
+        setReservation(await res.json());
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to cancel', { id: toastId });
+      }
+    } catch (e) {
+      toast.error('An unexpected error occurred', { id: toastId });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -275,21 +296,27 @@ export default function CheckoutPage({ params }: { params: Promise<{ id: string 
             <div className="px-8 py-6 flex gap-3">
               <button
                 onClick={cancel}
-                className="flex-1 py-3 text-sm border border-zinc-200 hover:bg-zinc-50 transition-colors"
+                disabled={isConfirming || isCancelling}
+                className={cn(
+                  'flex-1 py-3 text-sm border border-zinc-200 transition-colors',
+                  (isConfirming || isCancelling)
+                    ? 'bg-zinc-50 text-zinc-400 cursor-not-allowed'
+                    : 'hover:bg-zinc-50'
+                )}
               >
                 Cancel
               </button>
               <button
                 onClick={confirm}
-                disabled={expired}
+                disabled={expired || isConfirming || isCancelling}
                 className={cn(
                   'flex-1 py-3 text-sm border font-medium transition-colors',
-                  expired
+                  (expired || isConfirming || isCancelling)
                     ? 'bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed'
                     : 'bg-zinc-900 text-white border-zinc-900 hover:bg-zinc-800'
                 )}
               >
-                Confirm Purchase
+                {isConfirming ? 'Processing...' : 'Confirm Purchase'}
               </button>
             </div>
 

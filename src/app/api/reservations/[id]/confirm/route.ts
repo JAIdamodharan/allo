@@ -57,32 +57,66 @@ export async function POST(
     }
 
     // Confirm the reservation and permanently deduct stock
-    const [, updatedReservation] = await prisma.$transaction([
-      prisma.$executeRaw`
-        UPDATE "StockLevel"
-        SET "totalUnits" = "totalUnits" - ${reservation.quantity},
-            "reservedUnits" = "reservedUnits" - ${reservation.quantity}
-        WHERE "id" = ${reservation.stockLevelId}
-      `,
-      prisma.reservation.update({
-        where: { id },
-        data: { status: 'CONFIRMED' },
-        include: {
-          stockLevel: {
-            include: {
-              product: true,
-              warehouse: true,
+    try {
+      const updatedReservation = await prisma.$transaction(async (tx) => {
+        // Atomic update: only transition status if it is currently PENDING
+        const updatedCount = await tx.$executeRaw`
+          UPDATE "Reservation"
+          SET "status" = 'CONFIRMED'
+          WHERE "id" = ${id} AND "status" = 'PENDING'
+        `;
+
+        if (updatedCount === 0) {
+          throw new Error('RESERVATION_NOT_PENDING');
+        }
+
+        // Deduct stock
+        await tx.$executeRaw`
+          UPDATE "StockLevel"
+          SET "totalUnits" = "totalUnits" - ${reservation.quantity},
+              "reservedUnits" = "reservedUnits" - ${reservation.quantity}
+          WHERE "id" = ${reservation.stockLevelId}
+        `;
+
+        // Fetch and return the fully populated updated reservation
+        return tx.reservation.findUnique({
+          where: { id },
+          include: {
+            stockLevel: {
+              include: {
+                product: true,
+                warehouse: true,
+              },
             },
           },
-        },
-      }),
-    ]);
+        });
+      });
 
-    if (idempotencyKey && redis) {
-      await redis.set(`idempotency:confirm:${idempotencyKey}`, updatedReservation, { ex: 3600 });
+      if (idempotencyKey && redis) {
+        await redis.set(`idempotency:confirm:${idempotencyKey}`, updatedReservation, { ex: 3600 });
+      }
+
+      return NextResponse.json(updatedReservation);
+    } catch (err: any) {
+      if (err.message === 'RESERVATION_NOT_PENDING') {
+        const current = await prisma.reservation.findUnique({
+          where: { id },
+          include: {
+            stockLevel: {
+              include: {
+                product: true,
+                warehouse: true,
+              },
+            },
+          },
+        });
+        if (current?.status === 'CONFIRMED') {
+          return NextResponse.json(current);
+        }
+        return NextResponse.json({ error: 'Reservation is no longer pending' }, { status: 400 });
+      }
+      throw err;
     }
-
-    return NextResponse.json(updatedReservation);
   } catch (error) {
     console.error('Error confirming reservation:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
